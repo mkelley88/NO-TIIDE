@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 
 namespace TIIDE
 {
-    class Class1
+    public class ProgressReportModel
     {
+        public int PercentageComplete { get; set; } = 0;
     }
 }

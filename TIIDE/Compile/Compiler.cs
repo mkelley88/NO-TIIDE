@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using TICalcLibrary;
 
 namespace TIIDE.Compile
@@ -22,6 +23,11 @@ namespace TIIDE.Compile
         {
         }
 
+        /// <summary>
+        /// Load raw bytes from file into list object.
+        /// </summary>
+        /// <param name="binaryReader"></param>
+        /// <returns>List object</returns>
         internal static List<byte> LoadBytes(BinaryReader binaryReader)
         {
             bool reading = true;
@@ -32,9 +38,7 @@ namespace TIIDE.Compile
             {
                 try
                 {
-                    byte b = binaryReader.ReadByte();
-                    byteList.Add(b);
-                    //Console.WriteLine("Reading byte {0}", b.ToString("X2"));
+                    byteList.Add(binaryReader.ReadByte());
                 }
                 catch
                 {
@@ -42,43 +46,41 @@ namespace TIIDE.Compile
                 }
             }
             Console.WriteLine("LoadBytes(): Completed byte read.");
-            //Console.WriteLine("All Bytes Loaded.");
 
             return byteList;
         }
 
-        internal static string ReverseCompile(BinaryReader binaryReader)
+        /// <summary>
+        /// Iterate through raw byte list and convert to token strings.
+        /// </summary>
+        /// <param name="byteList"></param>
+        /// <returns>List object</returns>
+        internal static string ReverseCompile(List<byte> byteList)
         {
-            List<byte> byteList = LoadBytes(binaryReader);
-            // We should use the header info. See here: https://www.ticalc.org/pub/text/calcinfo/83pformat.txt
-            // TODO: Use checksum info on load to check for errors
             int tokenInteger = 0;
             string allbytes = "";
-            // Program data begins at 0x50 (74), maybe?... 
-            // Perhaps the variable header alters the data start location?
             try
             {   // Iterate through bytes
-                for (int i = 73; i <= byteList.Count - 4; i++)
+                for (int i = 0; i < byteList.Count; i++)
                 {
-                    // Branch to else and assume the first byte is 0x00 if it does not match here.
-                    if (byteList[i].Equals(0xBB) || byteList[i].Equals(0xAA) || byteList[i].Equals(0x5C) || 
-                        byteList[i].Equals(0x5D) || byteList[i].Equals(0x5E) || byteList[i].Equals(0x60) ||
-                        byteList[i].Equals(0x61) || byteList[i].Equals(0x62) || byteList[i].Equals(0x63) || 
-                        byteList[i].Equals(0x7E) || byteList[i].Equals(0xEF))
+                    // If the first byte does not match here, branch to else and assume the first byte is 0x00.
+                    if (byteList [i].Equals(0xBB) || byteList [i].Equals(0xAA) || byteList [i].Equals(0x5C) ||
+                        byteList [i].Equals(0x5D) || byteList [i].Equals(0x5E) || byteList [i].Equals(0x60) ||
+                        byteList [i].Equals(0x61) || byteList [i].Equals(0x62) || byteList [i].Equals(0x63) ||
+                        byteList [i].Equals(0x7E) || byteList [i].Equals(0xEF))
                     {
                         // Combine the two bytes into an integer
-                        tokenInteger = (byteList[i] << 8) + byteList[i + 1];
-                        // Since we already read in the next byte, we increment by one to skip it.
+                        tokenInteger = (byteList [i] << 8) + byteList [i + 1];
+                        // Since we already read in the next byte, we increment our pointer by one to skip it.
                         i++;
                     }
                     else
                     {
                         // Assume that the first byte is 0x00 and combine it with the current byte.
-                        tokenInteger = (0x00 << 8) + byteList[i];
+                        tokenInteger = (0x00 << 8) + byteList [i];
                     }
                     // Get the string from the database and append it to the variable
-                    //Console.WriteLine(tokenInteger);
-                    allbytes += _83FileFormat.IntegerToString(tokenInteger);
+                    allbytes += IntegerToString(tokenInteger);
                 }
             }
             catch (ArgumentOutOfRangeException)
@@ -90,56 +92,63 @@ namespace TIIDE.Compile
             return allbytes;
         }
 
-        internal static int GetDataSize(BinaryReader binaryReader)
+        /// <summary>
+        /// (Async) Iterate through raw byte list and convert to token strings.
+        /// </summary>
+        /// <param name="byteList"></param>
+        /// <param name="progress"></param>
+        /// <returns>List object</returns>
+        internal static async Task<string> ReverseCompileAsync(List<byte> byteList, IProgress<ProgressReportModel> progress)
         {
-            List<byte> byteList = LoadBytes(binaryReader);
+            ProgressReportModel report = new ProgressReportModel();
+            int tokenInteger = 0;
+            string allbytes = "";
 
-            // Load the data size information from 0x
-            byte[] dataSizeBytes = { byteList[57], byteList[58] };
-            int dataSize = BitConverter.ToUInt16(dataSizeBytes, 0);
-            Console.WriteLine("Data Size: {0} bytes", dataSize);
-
-            return dataSize;
-        }
-
-        internal static string GetComment(BinaryReader binaryReader)
-        {
-            List<byte> byteList = LoadBytes(binaryReader);
-
-            // Load the comment from 0x0B - 0x34 (40 bytes)
-            byte[] commentBytes = new byte[50];
-            int i2 = 0;
-            for (byte b = 0x0b; b <= 0x34; b++)
-            {
-                commentBytes[i2] = byteList[b];
-                i2++;
+            try
+            {   // Iterate through bytes
+                for (int i = 0; i < byteList.Count; i++)
+                {
+                    // If the first byte does not match here, branch to else and assume the first byte is 0x00.
+                    if (byteList [i].Equals(0xBB) || byteList [i].Equals(0xAA) || byteList [i].Equals(0x5C) ||
+                        byteList [i].Equals(0x5D) || byteList [i].Equals(0x5E) || byteList [i].Equals(0x60) ||
+                        byteList [i].Equals(0x61) || byteList [i].Equals(0x62) || byteList [i].Equals(0x63) ||
+                        byteList [i].Equals(0x7E) || byteList [i].Equals(0xEF))
+                    {
+                        // Combine the two bytes into an integer
+                        tokenInteger = (byteList [i] << 8) + byteList [i + 1];
+                        // Since we already read in the next byte, we increment our pointer by one to skip it.
+                        i++;
+                    }
+                    else
+                    {
+                        // Assume that the first byte is 0x00 and combine it with the current byte.
+                        tokenInteger = (0x00 << 8) + byteList [i];
+                    }
+                    // Get the string from the database and append it to the variable
+                    allbytes += await Task.Run(() => IntegerToString(tokenInteger));
+                    report.PercentageComplete = (i * 100) / byteList.Count;
+                    progress.Report(report);
+                }
             }
-            string comment = System.Text.Encoding.ASCII.GetString(commentBytes);
-            Console.WriteLine("Comment: {0}", comment);
-            return comment;
+            catch (ArgumentOutOfRangeException)
+            {
+                Console.WriteLine("ReverseCompile(): Argument out of range! Are we losing data?");
+            }
+            report.PercentageComplete = 0;
+            //Console.WriteLine("First byte: {0} - {1}", byteList[0], byteList[0].ToString("X2"));
+            return allbytes;
         }
 
-        internal static string GetProgramName(BinaryReader binaryReader)
+        /// <summary>
+        /// Read *83p file information into TI83 Model
+        /// </summary>
+        /// <param name="binaryReader"></param>
+        /// <returns>TI83Model object</returns>
+        internal static TI83Model GetTI83Object(BinaryReader binaryReader)
         {
             List<byte> byteList = LoadBytes(binaryReader);
 
-            // Load the program name from 0x3c - 0x43 (8 bytes)
-            byte[] prgmNameBytes = new byte[8];
-            int i1 = 0;
-            for (byte b = 0x3c; b <= 0x43; b++)
-            {
-                prgmNameBytes[i1] = byteList[b];
-                i1++;
-            }
-            string prgmName = Encoding.ASCII.GetString(prgmNameBytes);
-            Console.WriteLine("Program Name: {0}", prgmName);
-
-            return prgmName;
-        }
-
-        internal static TI83Model Decompile(List<byte> byteList)
-        {
-            // Setup *83p file object
+            // Create *83p file object
             TI83Model file83 = new TI83Model();
 
             // Load program [Type] and [Program Name]
@@ -147,8 +156,8 @@ namespace TIIDE.Compile
             byte[] prgmNameBytes = new byte[8];
             for (int i = 0; i < 8; i++)
             {
-                prgmTypeBytes[i] = byteList[i + file83.TypeOffset];
-                prgmNameBytes[i] = byteList[i + file83.NameOffset];
+                prgmTypeBytes [i] = byteList [i + file83.TypeOffset];
+                prgmNameBytes [i] = byteList [i + file83.NameOffset];
             }
             file83.Type = Encoding.ASCII.GetString(prgmTypeBytes);
             file83.Name = Encoding.ASCII.GetString(prgmNameBytes);
@@ -156,30 +165,74 @@ namespace TIIDE.Compile
             // Load program [Comment]
             byte[] prgmCommentBytes = new byte[40];
             for (int i = 0; i < 40; i++)
-                prgmCommentBytes[i] = byteList[i + file83.CommentOffset];
+                prgmCommentBytes [i] = byteList [i + file83.CommentOffset];
             file83.Comment = Encoding.ASCII.GetString(prgmCommentBytes);
 
-            // Load program [Data Length]
+            // Load program [Data Length] (size in bytes)
             byte[] prgmDataLength = new byte[2];
             for (int i = 0; i < 2; i++)
-                prgmDataLength[i] = byteList[i + file83.DataLengthOffset];
-            file83.DataLength = (prgmDataLength[0] << 8) + prgmDataLength[1]; // TODO: Double check this
+                prgmDataLength [i] = byteList [i + file83.DataLengthOffset];
+            file83.DataLength = (prgmDataLength [1] << 8) + prgmDataLength [0];
 
             // Load program [Data]
-            List<byte> prgmData = new List<byte>();
-            for (int i = 0; i < file83.DataLength - 16 )
-                prgmData[i] = byteList[i + file83.DataOffset];
+            //List<byte> prgmData = new List<byte>();
+            byte[] prgmData = new byte[file83.DataLength];
+            for (int i = 2; i < (file83.DataLength); i++)
+                prgmData [i] = byteList [i + file83.DataOffset];
             file83.Data = prgmData;
+
+            // Load program [ProtectFlag]
+            if (byteList [file83.ProtectFlagOffset].Equals(6))
+                file83.ProtectFlag = true;
+            else
+                file83.ProtectFlag = false;
 
             // Load program [Checksum]
             byte[] prgmChecksum = new byte[16];
-            int checksumOffset = file83.DataOffset + file83.DataLength;
+            int checksumOffset = file83.DataLength - 16;
             for (int i = 0; i < 16; i++)
-                prgmChecksum[i] = byteList[i + checksumOffset];
+                prgmChecksum [i] = byteList [i + checksumOffset];
             file83.Checksum = prgmChecksum;
 
             return file83;
         }
-            #endregion Public Methods
+
+        /// <summary>
+        /// Convert token integer to string
+        /// </summary>
+        /// <param name="i"></param>
+        /// <returns>String object</returns>
+        public static string IntegerToString(int i)
+        {
+            try
+            {
+                var token = SqliteDataAccess.FindTokenByInteger(i)[0];
+                return token.String;
+            }
+            catch
+            {
+                Console.WriteLine("ERROR: Attempt to access integer {0} | hex {1} in database failed.", i, i.ToString("x4"));
+                return "[?|" + i.ToString("X4") + "]";
+            }
+        }
+
+        // TODO: THIS IS INCOMPLETE
+        public static string BytesToString(byte b1, byte b2)
+        {
+            //var token = SqliteDataAccess.FindTokenByHex(b1.ToString(), b2.ToString())[0];
+            Console.WriteLine(b1.ToString(), b2.ToString());
+            //return token.String;
+            return "?";
+        }
+
+        // TODO: THIS IS INCOMPLETE
+        public static byte StringToByte(string s)
+        {
+            var token = SqliteDataAccess.FindTokenByString(s)[0];
+            string b = token.HighByte + token.LowByte;
+            return Convert.ToByte(b, 16);
+        }
+
+        #endregion Public Methods
     }
 }

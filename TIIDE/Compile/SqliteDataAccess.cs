@@ -1,11 +1,9 @@
 ﻿using Dapper;
-using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
 using System.Data.SQLite;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace TIIDE.Compile
@@ -25,6 +23,23 @@ namespace TIIDE.Compile
             using (IDbConnection cnn = new SQLiteConnection(LoadConnectionString()))
             {
                 var output = cnn.Query<TokenModel>(sqlFindTokenByInteger, new DynamicParameters());
+                return output.ToList();
+            }
+        }
+
+        /// <summary>
+        /// This function takes a single argument of type "integer".
+        /// The integer given corresponds to the Token in the DB. Uses Async.
+        /// </summary>
+        /// <param name="tokenInteger"></param>
+        /// <returns>A list element.</returns>
+        public static async Task<List<TokenModel>> FindTokenByIntegerAsync(int tokenInteger = 0)
+        {
+            string sqlFindTokenByInteger = "select * from Tokens where Integer is " + tokenInteger.ToString();
+
+            using (IDbConnection cnn = new SQLiteConnection(LoadConnectionString()))
+            {
+                var output = await Task.Run(() => cnn.Query<TokenModel>(sqlFindTokenByInteger, new DynamicParameters()));
                 return output.ToList();
             }
         }
@@ -65,7 +80,7 @@ namespace TIIDE.Compile
 
         private static string LoadConnectionString(string id = "Default")
         {
-            return ConfigurationManager.ConnectionStrings[id].ConnectionString;
+            return ConfigurationManager.ConnectionStrings [id].ConnectionString;
         }
     }
 }

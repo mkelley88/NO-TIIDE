@@ -1,15 +1,20 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using TICalcLibrary;
+using TIIDE.Compile;
 
 namespace TIIDE
 {
     public partial class TIIDE : Form
     {
+        public static TI83Model prgm83 = new TI83Model();
+
         #region Private Fields
 
-        private OpenFileDialog ofd = new OpenFileDialog() {Filter= "TI-83+ Program Files (*.8xp)|*.8xp|TI-82/83 Program Files (*.83p)|*.83p|All Files (*.*)|*.*" };
+        private OpenFileDialog ofd = new OpenFileDialog() { Filter = "TI-83+ Program Files (*.8xp)|*.8xp|TI-82/83 Program Files (*.83p)|*.83p|All Files (*.*)|*.*" };
         private string programCode = "";
 
         #endregion Private Fields
@@ -31,6 +36,14 @@ namespace TIIDE
             lineNumberDisplay.SelectionAlignment = HorizontalAlignment.Right;
             rtxtbIDE.Select();
             UpdateGUI();
+        }
+
+        private void Init()
+        {
+            FontSizeComboBox.SelectedIndex = 3;
+            Font ideFont = new Font("Arial", 12, FontStyle.Regular);
+            rtxtbIDE.Font = ideFont;
+            lineNumberDisplay.Font = ideFont;
         }
 
         private void Form1_SizeChanged(object sender, EventArgs e)
@@ -63,12 +76,12 @@ namespace TIIDE
             }
         }
 
-        private void RichTextBox1_TextChanged(object sender, EventArgs e)
+        private void RtxtbIDE_TextChanged(object sender, EventArgs e)
         {
             UpdateGUI();
         }
 
-        private void RichTextBox1_VScroll(object sender, EventArgs e)
+        private void RtxtbIDE_VScroll(object sender, EventArgs e)
         {
             UpdateGUI();
         }
@@ -93,6 +106,8 @@ namespace TIIDE
         }
 
         #endregion Private Methods
+
+        #region IDE Methods
 
         private string ApplyHexOrderFormatting(string s)
         {
@@ -154,36 +169,7 @@ namespace TIIDE
             return rtxtbIDE.Lines.Length;
         }
 
-        private void ImportProgramToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-        }
-
-        // Load in file from Open File Dialog
-        private void ImportToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            ofd.ShowDialog();   
-            string import = "";
-            rtxtbIDE.Text = import;
-
-            if (File.Exists(ofd.FileName))
-            {
-                Console.WriteLine("Importing file {0}", ofd.FileName);
-                int dataSize = Compile.Compiler.GetDataSize(new BinaryReader(File.OpenRead(ofd.FileName)));
-                import = Compile.Compiler.ReverseCompile(new BinaryReader(File.OpenRead(ofd.FileName)));
-            }
-            Console.WriteLine("writing to ide");
-            programCode = import;
-
-            rtxtbIDE.Text = programCode;
-        }
-
-        private void Init()
-        {
-            FontSizeComboBox.SelectedIndex = 6;
-            Font ideFont = new Font("Arial", 16, FontStyle.Regular);
-            rtxtbIDE.Font = ideFont;
-            lineNumberDisplay.Font = ideFont;
-        }
+        #endregion IDE Methods
 
         private void LineStartSyntaxCorrection()
         {
@@ -192,7 +178,7 @@ namespace TIIDE
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];
-                if (!line.StartsWith(":")) { lines[i] = ":" + line; Console.WriteLine("Line " + i + " - Corrected. Was -" + line); }
+                if (!line.StartsWith(":")) { lines [i] = ":" + line; Console.WriteLine("Line " + i + " - Corrected. Was -" + line); }
             }
             if (rtxtbIDE.Lines != lines) { rtxtbIDE.Lines = lines; }
         }
@@ -201,8 +187,8 @@ namespace TIIDE
         {
         }
 
-        // Code formatting selection box controls
-        // ---------------------------------------
+        /* Code formatting selection box controls */
+
         private void RawToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // Make sure standard and hex are unchecked
@@ -238,8 +224,6 @@ namespace TIIDE
             Console.WriteLine(pt.ToString());
         }
 
-
-
         private void FontSizeComboBox_TextChanged(object sender, EventArgs e)
         {
             int size = int.Parse(FontSizeComboBox.Text);
@@ -255,11 +239,62 @@ namespace TIIDE
             UpdateGUI();
         }
 
-
-
         private void ExitToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            this.Close();
+        }
 
+        private void NumericUpDown1_ValueChanged(object sender, EventArgs e)
+        {
+        }
+
+        private async void OpenToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Progress<ProgressReportModel> progress = new Progress<ProgressReportModel>();
+            progress.ProgressChanged += ReportProgress;
+            rtxtbIDE.Enabled = false;
+            statusLoadingBar2.Visible = true;
+            ofd.ShowDialog();
+            rtxtbIDE.Text = $"Loading file {ofd.FileName}. Please wait...";
+            if (File.Exists(ofd.FileName))
+            {
+                Console.WriteLine("Importing file {0}", ofd.FileName);
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                prgm83 = Compiler.GetTI83Object(new BinaryReader(File.OpenRead(ofd.FileName)));
+                watch.Stop();
+                Console.WriteLine($"Read file to TI83Object took {watch.ElapsedMilliseconds} milliseconds.");
+                watch.Restart();
+                programCode = await Compiler.ReverseCompileAsync(new List<Byte>(prgm83.Data), progress);
+                watch.Stop();
+                Console.WriteLine($"Detokenize process took {watch.ElapsedMilliseconds} milliseconds.");
+                fileInformationToolStripMenuItem.Enabled = true;
+            }
+            prgm83.AssociatedFileName = ofd.FileName;
+            //Console.WriteLine("writing to ide");
+            // Apply standard formatting at load
+            rtxtbIDE.Text = ApplyIDEFormatting(programCode);
+            rtxtbIDE.Enabled = true;
+            statusLoadingBar2.Visible = false;
+        }
+
+        private void ReportProgress(object sender, ProgressReportModel e)
+        {
+            statusLoadingBar2.Value = e.PercentageComplete;
+        }
+
+        private void projectToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void FileInformationToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            FormFileDetails formFileDetails = new FormFileDetails(prgm83);
+            formFileDetails.Show(this);
+        }
+
+        private void viewGitHubWikiToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            System.Diagnostics.Process.Start("https://github.com/MistaGNerd/NO-TIIDE/wiki");
         }
     }
 }
